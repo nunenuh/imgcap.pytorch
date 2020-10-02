@@ -18,12 +18,14 @@ from PIL import Image
 # spacy_eng = spacy.load('en_core_web_sm')
 
 class Vocabulary(object):
-    def __init__(self, freq_threshold, spacy_eng=None):
-        self.itos = {0: "<PAD>", 1: "<SOS>", 2: "<EOS>", 3: "<UNK>"}
-        self.stoi = {"<PAD>": 0, "<SOS>": 1, "<EOS>": 2, "<UNK>": 3}
+    def __init__(self, freq_threshold: int, spacy_eng=None):
+        self.itos: dict = {0: "<PAD>", 1: "<SOS>", 2: "<EOS>", 3: "<UNK>"}
+        self.stoi: dict = {"<PAD>": 0, "<SOS>": 1, "<EOS>": 2, "<UNK>": 3}
         self.freq_threshold = freq_threshold
         if spacy_eng==None:
             self.spacy_eng = spacy.load('en_core_web_sm')
+        else:
+            self.spacy_eng = spacy_eng
 
     def __len__(self):
         return len(self.itos)
