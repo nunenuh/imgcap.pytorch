@@ -6,9 +6,12 @@ import spacy
 import torch
 import torch.nn as nn
 from torch.utils import data
+from torch.utils.data import DataLoader,Dataset
 
 
 from sklearn import model_selection
+# from sklearn.model_selection import train_test_split
+
 
 import PIL
 from PIL import Image
@@ -16,23 +19,33 @@ from PIL import Image
 
 
 # spacy_eng = spacy.load('en_core_web_sm')
-
 class Vocabulary(object):
-    def __init__(self, freq_threshold: int, spacy_eng=None):
-        self.itos: dict = {0: "<PAD>", 1: "<SOS>", 2: "<EOS>", 3: "<UNK>"}
-        self.stoi: dict = {"<PAD>": 0, "<SOS>": 1, "<EOS>": 2, "<UNK>": 3}
+    def __init__(self, freq_threshold, spacy_eng=None):
+        self.start_word = "<SOS>"
+        self.end_word = "<EOS>"
+        self.pad_word = "<PAD>"
+        self.unk_word = "<UNK>"
+        
+        self.itos = {0: self.pad_word, 1: self.start_word, 2: self.end_word, 3: self.unk_word}
+        self.stoi = {self.pad_word: 0, self.start_word: 1, self.end_word: 2, self.unk_word: 3}
+        
+        self.itos = {0: self.start_word, 1: self.end_word, 2: self.pad_word, 3: self.unk_word}
+        self.stoi = {self.start_word: 0, self.end_word: 1, self.pad_word: 2, self.unk_word: 3}
+        
+        
         self.freq_threshold = freq_threshold
         if spacy_eng==None:
             self.spacy_eng = spacy.load('en_core_web_sm')
         else:
             self.spacy_eng = spacy_eng
-
+        
     def __len__(self):
         return len(self.itos)
 
     def tokenizer_eng(self, text):
-        return [tok.text.lower() for tok in self.spacy_eng.tokenizer(text)]
-
+        tokenizer = [tok.text.lower() for tok in self.spacy_eng.tokenizer(text)]
+        return tokenizer
+        
     def build_vocabulary(self, sentence_list):
         frequencies = {}
         idx = 4
@@ -59,31 +72,30 @@ class Vocabulary(object):
         ]
 
 
-class FlickrDataset(data.Dataset):
-    def __init__(self, root_dir, caption_file, transform=None, freq_threshold=5,
+class FlickrDataset(Dataset):
+    def __init__(self, root_dir, caption_file, caption_delimiter='|', 
+                 image_column='image_name', text_column='caption_text',
+                 transform=None, freq_threshold=5,
                  train=True, split_val=0.2):
         self.root_dir = root_dir
         self.caption_file = caption_file
-        self.df = pd.read_csv(caption_file)
+        self.caption_delimiter = caption_delimiter
+        self.image_column = image_column
+        self.text_column = text_column
+        
+        self.dataframe = pd.read_csv(caption_file, delimiter=caption_delimiter)
         self.transform = transform
         
         self.vocab = Vocabulary(freq_threshold)
-        self.vocab.build_vocabulary(self.df['caption'].tolist())
+        self.vocab.build_vocabulary(self.dataframe[self.text_column].tolist())
         
         self.train = train 
         self.split_val = split_val
         self._do_split_train_valid()
         
-#         # Get img, caption columns
-#         self.imgs = self.df["image"]
-#         self.captions = self.df["caption"]
-
-        # Initialize vocabulary and build vocab
-
-        
     def _do_split_train_valid(self):
         imgs_train, imgs_valid, caps_train, caps_valid = model_selection.train_test_split(
-            self.df["image"], self.df["caption"], 
+            self.dataframe[self.image_column], self.dataframe[self.text_column], 
             test_size=self.split_val, random_state=16
         )
         
@@ -127,22 +139,27 @@ class CaptionCollate:
         self.batch_first = batch_first
 
     def __call__(self, batch):
-        imgs = [item[0].unsqueeze(0) for item in batch]
+        batch.sort(key=lambda x: len(x[1]), reverse=True)
+        (images, captions) = zip(*batch)
+        
+        imgs = [img.unsqueeze(0) for img in images]
         imgs = torch.cat(imgs, dim=0)
-        targets = [item[1] for item in batch]
-        targets = nn.utils.rnn.pad_sequence(targets, batch_first=self.batch_first, 
-                               padding_value=self.pad_idx)
-
-        return imgs, targets
+        
+        lengths = [len(cap) for cap in captions]
+        targets = torch.zeros(len(captions), max(lengths)).long()
+        for idx, cap in enumerate(captions):
+            end = lengths[idx]
+            targets[idx, :end] = cap[:end]
+        return imgs, targets, lengths
     
 
-def flickr8k_dataloader(root_folder, caption_file, transform, train=True,
-                    batch_size=32, num_workers=8, shuffle=True, pin_memory=True):
-
+def flickr_dataloader(root_folder, caption_file, transform, train=True,
+                        batch_size=32, num_workers=8, shuffle=True, pin_memory=True):
+    
     dataset = FlickrDataset(root_folder, caption_file, transform=transform, train=train)
-    pad_idx = dataset.vocab.stoi["<PAD>"]
-    dataloader = data.DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers,
+    PAD_IDX = dataset.vocab.stoi["<PAD>"]
+    dataloader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=num_workers,
                             shuffle=shuffle, pin_memory=pin_memory, 
-                            collate_fn=CaptionCollate(pad_idx=pad_idx))
-
+                            collate_fn=CaptionCollate(pad_idx=PAD_IDX))
+    
     return dataloader, dataset
