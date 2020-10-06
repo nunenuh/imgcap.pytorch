@@ -1,41 +1,42 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn.utils.rnn import pack_padded_sequence
+
 
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.metrics import Accuracy
 
-
 class ImageCaptionTask(pl.LightningModule):
-    def __init__(self, model, optimizers, criterion, scheduler=None):
+    def __init__(self, model, optimizer, criterion, vocab_size, scheduler=None, batch_first=True):
         super().__init__()
         self.model = model
-        self.optimizer = optimizers
+        self.optimizer = optimizer
         self.criterion = criterion
         self.scheduler = scheduler
+        self.vocab_size = vocab_size
+        self.batch_first = batch_first
         self.metric = Accuracy()
         
     def forward(self, imgs, captions):
-        outputs = self.model(imgs, captions)
+        outputs = self.model(imgs, captions[:-1])
         return outputs
         
-    
     def shared_step(self, batch, batch_idx):
-        imgs, captions = batch
-        outputs = self.model(imgs, captions)
+        imgs, captions, lengths = batch
+        packed = pack_padded_sequence(captions, lengths, batch_first=self.batch_first)
+        targets, _, _, _ = packed
         
-        outputs_preprocess = outputs.reshape(-1, outputs.shape[2])
-        captions_preprocess = captions.reshape(-1)
-        loss = self.criterion(outputs_preprocess, captions_preprocess)
-        acc = self.metric(outputs_preprocess.argmax(1), captions_preprocess)
+        outputs = self.model(imgs, captions, lengths)
+        loss = self.criterion(outputs, targets)
+        acc = self.metric(outputs, targets)
         return loss, acc
 
-    
     def training_step(self, batch, batch_idx):
         loss, acc = self.shared_step(batch, batch_idx)
         result = pl.TrainResult(loss)
-        result.log_dict({'trn_loss': loss, 'trn_acc':acc})
+        result.log_dict({'trn_loss': loss, 'trn_acc': acc})
         
         return result
     
