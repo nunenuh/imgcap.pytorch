@@ -1,12 +1,17 @@
-# Image Caption Flickr Dataset with PyTorch
+# Image Caption With PyTorch
 
 This repository is still under construction.
 
 This repository is created to show how to make neural network using pytorch to generate a caption from an image. The dataset that I use in this repository is Flickr8k and Flikcr30k Image Caption dataset. The model is divided into encoder and decoder to make it more clear to read the code. 
 <br/> <br/>
 
-The image below is the ilustration of the network <br/>
-CRNN Image Illustration
+<img src="assets/images/encoder-decoder.png"/>
+Image Source : Encoder Decoder Image from Udacity Computer Vision Nanodegree Project
+<br/><br/>
+
+The image on the top is the ilustration of the network, but not very similar to what I do in this project, that image is just only the illustration of what the network do. <br/>
+
+
 
 
 ## Project Structure
